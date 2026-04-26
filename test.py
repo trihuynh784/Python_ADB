@@ -1,35 +1,37 @@
-import cv2
-import numpy as np
+import os
+import time
 import subprocess
-import pytesseract
-import re
-
-pytesseract.pytesseract.tesseract_cmd = (
-    "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
-)
 
 
-def get_screen_adb():
-    # Chụp màn hình từ ADB
-    command = "adb exec-out screencap -p"
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-    screenshot = process.stdout.read()
-    if not screenshot:
-        return None
-    return cv2.imdecode(np.frombuffer(screenshot, np.uint8), cv2.IMREAD_COLOR)
+def quick_swipe(x1, y1, x2, y2):
+    """
+    Vuốt cực nhanh để dịch chuyển bản đồ.
+    Thời gian 100ms là mức 'vàng' để game không hiểu lầm là click.
+    """
+    # Lệnh input swipe x1 y1 x2 y2 duration
+    os.system(f"adb shell input swipe {x1} {y1} {x2} {y2} 100")
 
 
-def get_coords_from_region(screen, x, y, w, h, debug_name="temp"):
-    
+def find_gem_pattern():
+    # Giả sử màn hình 1280x720
+    start_x, start_y = 1000, 360
+    end_x, end_y = 700, 360
+
+    for i in range(5):  # Quét 5 hàng
+        # Swipe ngang cực nhanh
+        print(f"Đang quét hàng thứ {i+1}...")
+        quick_swipe(start_x, start_y, end_x, end_y)
+
+        # Đợi map dừng hẳn rồi mới chụp màn hình scan Gem
+        time.sleep(1.5)
+
+        # Gọi hàm OpenCV của bạn ở đây
+        # if find_gem(): break
+
+        # Swipe dọc xuống để đổi vùng quét
+        quick_swipe(640, 600, 640, 300)
+        time.sleep(1.5)
 
 
-def scan_all_bookmarks():
-    
-
-
-# list = scan_all_bookmarks()
-# print(list)
-
-screenshot = get_screen_adb()
-loc = get_coords_from_region(screenshot, x=620, y=190, w=100, h=25)
-print(loc)
+find_gem_pattern()
+# draganddrop(60, 655, 60, 655, 1000)

@@ -12,18 +12,29 @@ def main():
     # Run the game
     # autoBot.open_game()
     # Map zoom out
-    # autoBot.map_zoomout()
+    autoBot.map_zoomout()
 
     while True:
-        loc, status = autoBot.check_status_army()
+        return_army_loc, status = autoBot.check_status_army()
+
         if status == "not_full_army":
-            print("Ready to gather gem!")
-            autoBot.process_marked_mines(loc, status)
+            loc = autoBot.scan_gem()
+            while loc is None:
+                adb.swipe_escape_area()
+                loc = autoBot.scan_gem()
+            adb.click(*loc)
+            time.sleep(1.5)
+            autoBot.gather(status)
         elif status == "returning":
-            print("Ready to gather gem!")
-            autoBot.process_marked_mines(loc, status)
-        else:
-            print("All done!")
+            adb.click(*return_army_loc)
+            time.sleep(0.8)
+            loc = autoBot.scan_gem()
+            while loc is None:
+                adb.swipe_escape_area()
+                loc = autoBot.scan_gem()
+            adb.click(*loc)
+            time.sleep(1.5)
+            autoBot.gather(status)
 
         time.sleep(5)
 

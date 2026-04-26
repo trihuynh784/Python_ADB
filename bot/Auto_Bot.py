@@ -19,6 +19,7 @@ class AutoBot:
         self.deviceId = deviceId
         self.adb = adb
         self.list_marked_mines = []
+        self.list_go_location = []
 
     def open_game(self):
         open_game(
@@ -26,104 +27,74 @@ class AutoBot:
         )
 
     def map_zoomout(self):
-        map_zoomout()
+        map_zoomout(self.adb)
 
     def check_status_army(self):
         return check_status_army(self.adb)
 
     def scan_gem(self):
+        close_popup(self.adb)
         template_gem_list = [
             "assets/template/gem_1.png",
-            "assets/template/gem_2.png",
-            "assets/template/gem_3.png",
+            "assets/template/gem_1_light_variant.png",
+            "assets/template/gem_1_ver_2.png",
+            # "assets/template/gem_2.png",
+            # "assets/template/gem_3.png",
         ]
-        x, y = scan_gem(self.adb, template_gem_list, 50)
-        return x, y - 10
+        loc = scan_gem(self.adb, template_gem_list)
+        if loc is None:
+            return None
+        return [loc[0], loc[1] - 10]
 
-    def gather(self, loc, type="returning" or "not_full_army"):
-        for attempt in range(2):
-            if attempt == 0:
-                self.adb.click(*loc)
-                time.sleep(1.2)
-                loc_big_gem = self.adb.find("assets/template/big_gem.png")
-                if loc_big_gem is None:
-                    # Tìm mỏ chỗ khác
-                    return
-                self.adb.click(*loc_big_gem)
-                time.sleep(1.2)
+    def gather(self, gather_type="not_full_army"):
+        while True:  # Chạy cho đến khi nào đi quân thành công thì thôi
+            loc_big_gem = self.adb.find("assets/template/big_gem.png")
 
-                set_mine_into_list(self.adb, self.list_marked_mines)
-                self.adb.click(*loc_big_gem)
-                time.sleep(1.2)
-            else:
-                loc_big_gem = self.adb.find("assets/template/big_gem.png")
-                if loc_big_gem is None:
-                    # Tìm mỏ chỗ khác
-                    return
-                self.adb.click(*loc_big_gem)
-                time.sleep(2)
-                if type == "returning":
-                    # todo: let take the army's return and farm this gem mine
-                    return_army(self.adb)
-                    self.map_zoomout()
-                    self.adb.swipe_escape_area()
-                else:
-                    # todo: take new army to farm
-                    new_army(self.adb)
-                    self.map_zoomout()
-                    self.adb.swipe_escape_area()
+            if loc_big_gem is None:
+                print("Không thấy big_gem, đang di chuyển vùng khác để tìm...")
+                self.map_zoomout()
+                self.adb.swipe_escape_area()
 
-    def process_marked_mines(self, loc, type="returning" or "not_full_army"):
-        if type == "not_full_army":
-            # Get marked mines
-            self.get_list_marked_mine()
-
-            # foreach list
-            if len(self.list_marked_mines):
-                for mine in self.list_marked_mines:
-                    attempt = 0
-                    while attempt <= 10:
-                        go_loc = self.adb.find("assets/template/go.png")
-                        if go_loc is not None:
-                            self.adb.click(*go_loc)
-                            time.sleep(2.4)
-                            gem_loc = self.scan_gem()
-                            self.gather(gem_loc, type)
-                            # reopen window mine marked
-                            open_mine_marked(self.adb)
-                            # delete first marked mine
-                            self.delete_mine()
-                            attempt += 1
-                            break
-            else:
-                close_popup(self.adb)
+                # Gọi scan_gem để tìm tọa độ mỏ mới
                 gem_loc = self.scan_gem()
-                self.gather(gem_loc, type)
 
-        else:
-            self.adb.click(*loc)
-            time.sleep(1.8)
-            gem_loc = self.scan_gem()
-            self.gather(gem_loc, type)
+                # Nếu scan_gem cũng không thấy, tiếp tục thoát xác sang vùng xa hơn
+                while gem_loc is None:
+                    self.adb.swipe_escape_area()
+                    gem_loc = self.scan_gem()
 
-    def delete_mine(self):
-        while True:
-            delete_mine_loc = self.adb.find("assets/template/delete_mine.png")
-            if delete_mine_loc is not None:
-                self.adb.click(*delete_mine_loc)
-                self.list_marked_mines.pop(0)
-                time.sleep(1.5)
-                break
+                # Sau khi scan_gem đã đưa camera tới chỗ có mỏ,
+                # vòng lặp 'while True' sẽ quay lại bước tìm 'big_gem' ở đầu.
+                continue
 
-    # Util function to get list marked
-    def get_list_marked_mine(self):
-        open_mine_marked(self.adb)
-        list = get_list_location_mine()
-        if len(list):
-            for mine in list:
-                if mine in self.list_marked_mines:
-                    print("Mine [" + mine.x + ", " + mine.y + "] is exist on list!")
+            # --- Bước Click và Đi quân ---
+            print(f"Click vào mỏ Gem tại: {loc_big_gem}")
+            self.adb.click(*loc_big_gem)
+            time.sleep(1.2)
+
+            claim_loc = None
+            for temp in [
+                "assets/template/claim.png",
+                "assets/template/claim_2.png",
+                "assets/template/claim_3.png",
+            ]:
+                claim_loc = self.adb.find(temp, threshold=0.8)
+                if claim_loc:
+                    break
+
+            if claim_loc:
+                self.adb.click(*claim_loc)
+                time.sleep(1.0)
+
+                if gather_type == "returning":
+                    return_army(self.adb)
                 else:
-                    self.list_marked_mines.append(mine)
-        print(self.list_marked_mines)
-        return
+                    new_army(self.adb)
+
+                self.map_zoomout()
+                self.adb.swipe_escape_area()
+                return  # <--- QUAN TRỌNG: Thoát hàm khi đã đi quân THÀNH CÔNG
+            else:
+                print("Mỏ lỗi hoặc đã bị chiếm, tìm mỏ khác...")
+                self.adb.swipe_escape_area()  # Vuốt đi chỗ khác để tránh kẹt ở mỏ này
+                continue  # Quay lại đầu vòng lặp để tìm mỏ khác

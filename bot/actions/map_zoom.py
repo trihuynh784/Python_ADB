@@ -1,8 +1,8 @@
-from services.utils_service import zoom_out
 import time
 
 
-def map_zoomout():
-    zoom_out()
-    time.sleep(1.5)  # Đợi zoom hoàn thành
+def map_zoomout(adb):
+    adb.draganddrop(60, 655, 60, 655, 1000)
+    adb.click(255, 560)
+    time.sleep(0.4)
     print("✅ Map zoomed out completely!")

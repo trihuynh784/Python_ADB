@@ -44,7 +44,7 @@ def get_location_mine(screen, x, y, w, h):
 
 
 # Lấy ra 1 list nhiều location của mỏ gem
-def get_list_location_mine():
+def get_list_location_mine(adb):
     screen = get_screen_adb()
     if screen is None:
         print("[-] Không thể chụp màn hình ADB")
@@ -67,62 +67,71 @@ def get_list_location_mine():
         else:
             print(f"Hàng {i+1}: OCR thất bại (Xem ảnh debug_error_row_{i}.png)")
 
-    return found_coords
+    go_list = adb.find_all("assets/template/go.png")
+
+    return found_coords, go_list
 
 
 # Đánh dấu mỏ gem vào list trong game (star)
 def set_mine_into_list(adb, list_mine):
-    is_marked_loc = check_is_marked(adb)
-    if is_marked_loc is None:
-        while True:
-            mark_mine_loc = adb.find(mark_mine_template_path, mark_mine=True)
-            if mark_mine_loc is not None:
-                adb.click(*mark_mine_loc)
-                time.sleep(0.8)
-                while True:
-                    mine_loc = get_location_mine(
-                        get_screen_adb(), x=620, y=190, w=100, h=25
-                    )
-                    if mine_loc is not None:
-                        rp = ResourcePoint(*mine_loc)
-                        # todo: logic check xem khoảng cách giữa các mỏ đã mark có cách nhau tối thiểu (50px) hay ko --- Tránh farm trùng mỏ
-                        if is_safe_distance(list_mine, rp.x, rp.y):
-                            list_mine.append(rp)
+    # Kiểm tra xem mỏ đã được mark chưa (Sửa lại check_is_marked như tôi đã nói ở câu trước)
+    if check_is_marked(adb) is not None:
+        print("Mỏ này đã được đánh dấu trước đó rồi!")
+        return False
 
-                            while True:
-                                confirm_loc = adb.find(confirm_template_path)
-                                if confirm_loc is not None:
-                                    adb.click(*confirm_loc)
-                                    time.sleep(0.8)
-                                    print("Marking mine success!")
-                        else:
-                            print("This mine is not in a safe distance!")
-                        return
-    print("This mine is marked!")
+    # Thử click nút Mark (hình ngôi sao)
+    mark_mine_loc = None
+    for _ in range(5):
+        mark_mine_loc = adb.find(mark_mine_template_path, mark_mine=True)
+        if mark_mine_loc:
+            adb.click(*mark_mine_loc)
+            time.sleep(1.0)
+            break
+
+    if not mark_mine_loc:
+        print("[-] Không tìm thấy nút để Mark mỏ.")
+        return False
+
+    # Lấy tọa độ từ OCR để lưu vào list local
+    mine_loc = get_location_mine(get_screen_adb(), x=620, y=190, w=100, h=25)
+    if mine_loc:
+        list_mine.append(ResourcePoint(*mine_loc))
+
+    # Click Confirm để xác nhận lưu vào Star List trong game
+    for _ in range(10):  # Thử tìm nút Confirm trong 10 lần (~8-10 giây)
+        confirm_loc = adb.find(confirm_template_path)
+        if confirm_loc:
+            adb.click(*confirm_loc)
+            time.sleep(1.0)
+            print("[+] Đánh dấu mỏ thành công!")
+            return True
+        time.sleep(0.8)
+
+    print("[-] Đã mở menu Mark nhưng không tìm thấy nút Confirm (có thể bị lag).")
 
 
 # Open mine marked
 def open_mine_marked(adb):
-    while True:
+    for _ in range(5):  # Thử tối đa 5 lần
         star_loc = adb.find(star_template_path)
-        if star_loc is not None:
+        if star_loc:
             adb.click(*star_loc)
-            time.sleep(1.5)
-            while True:
-                star_special_loc = adb.find(star_special_template_path, threshold=0.8)
-                if star_special_loc is not None:
+            time.sleep(0.5)
+            # Tìm tab đặc biệt bên trong
+            for _ in range(10):
+                star_special_loc = adb.find(star_special_template_path, threshold=0.7)
+                if star_special_loc:
                     adb.click(*star_special_loc)
-                    time.sleep(0.8)
-                    return
+                    return True  # Thoát khi thành công
+                time.sleep(0.5)
+    return False
 
 
 # Hàm util check đã mark chưa
 def check_is_marked(adb):
     is_marked_loc = adb.find(is_marked_template_path)
-    if is_marked_template_path is not None:
+    if is_marked_loc is not None:  # Sửa ở đây
         return is_marked_loc
-
-    print("Mine is marked!")
     return None
 
 
@@ -135,16 +144,3 @@ def get_screen_adb():
     if not screenshot:
         return None
     return cv2.imdecode(np.frombuffer(screenshot, np.uint8), cv2.IMREAD_COLOR)
-
-
-# Hàm check xem khoảng cách giữa các mỏ đã mark có cách nhau tối thiểu (50px) hay ko --- Tránh farm trùng mỏ
-def is_safe_distance(mine_list, curr_x, curr_y, threshold=50):
-    for mine in mine_list:
-        dist_x = abs(mine.x - curr_x)
-        dist_y = abs(mine.y - curr_y)
-
-        if dist_x < threshold and dist_y < threshold:
-            print("Doesn't have a safe distance!")
-            return False
-    print("Mine in a safe distance!")
-    return True

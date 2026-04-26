@@ -24,6 +24,23 @@ class ADB:
             ["adb", "-s", self.deviceId, "shell", "input", "tap", str(x), str(y)]
         )
 
+    def draganddrop(self, x1, y1, x2, y2, dur=100):
+        subprocess.run(
+            [
+                "adb",
+                "-s",
+                self.deviceId,
+                "shell",
+                "input",
+                "draganddrop",
+                str(x1),
+                str(y1),
+                str(x2),
+                str(y2),
+                str(dur),
+            ]
+        )
+
     def swipe(self, x1, y1, x2, y2, duration=1000):
         subprocess.run(
             [
@@ -97,21 +114,69 @@ class ADB:
 
         return None
 
+    def find_all(self, target_img_path, threshold=0.8, debug=False):
+        command = ["adb", "-s", self.deviceId, "exec-out", "screencap", "-p"]
+        process = subprocess.run(command, capture_output=True)
+
+        if not process.stdout:
+            print("!!! Lỗi: ADB không phản hồi")
+            return []
+
+        # Decode ảnh từ bộ nhớ đệm
+        screen_img = cv2.imdecode(
+            np.frombuffer(process.stdout, np.uint8), cv2.IMREAD_GRAYSCALE
+        )
+        target_img = cv2.imread(target_img_path, cv2.IMREAD_GRAYSCALE)
+
+        if screen_img is None or target_img is None:
+            print(f"Error loading images: screen or {target_img_path}")
+            return []
+
+        h, w = target_img.shape
+        res = cv2.matchTemplate(screen_img, target_img, cv2.TM_CCOEFF_NORMED)
+
+        # Tìm tất cả các vị trí có độ khớp > threshold
+        loc = np.where(res >= threshold)
+
+        results = []
+        # loc trả về theo dạng (array_y, array_x)
+        for pt in zip(*loc[::-1]):
+            center_x = int(pt[0] + (w // 2))
+            center_y = int(pt[1] + (h // 2))
+
+            # Để tránh việc lấy quá nhiều điểm trùng lặp sát nhau (nhiễu)
+            # Chúng ta có thể kiểm tra xem điểm này đã tồn tại trong list chưa
+            is_duplicate = False
+            for existing_x, existing_y in results:
+                if abs(center_x - existing_x) < (w // 2) and abs(
+                    center_y - existing_y
+                ) < (h // 2):
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                results.append([center_x, center_y])
+                if debug:
+                    cv2.rectangle(
+                        screen_img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2
+                    )
+
+        if debug and len(results) > 0:
+            cv2.imshow("Debug Find All", screen_img)
+            cv2.waitKey(0)
+
+        # print(f"- Found {len(results)} matches for {target_img_path}")
+        return results
+
     def swipe_escape_area(self):
-        """
-        Hàm vuốt 3 lần liên tiếp về một hướng ngẫu nhiên
-        để rời khỏi khu vực hiện tại sau khi đã gửi quân.
-        """
-        # 1. Thông số theo yêu cầu
-        distance = 300
-        duration = 1200
-        repeats = 8
+        distance = 400  # Tăng khoảng cách một chút để bay xa hơn
+        duration = 100  # Cực nhanh
+        repeats = 2
 
         cx = self.width // 2
         cy = self.height // 2
 
-        # 2. Chọn hướng ngẫu nhiên (chỉ chọn 1 lần duy nhất)
-        # (dx, dy): 1 là đi theo chiều dương, -1 là chiều âm
+        # 2. Chọn hướng ngẫu nhiên
         possible_directions = [
             (1, 0),  # Phải
             (-1, 0),  # Trái
@@ -120,26 +185,17 @@ class ADB:
         ]
         dx, dy = random.choice(possible_directions)
 
-        print(f"[*] Đã gửi quân! Bắt đầu vuốt 'thoát xác' 3 lần về hướng ({dx}, {dy})")
+        print(f"[*] Thoát xác nhanh: {repeats} lần về hướng {dx, dy}")
 
-        # 3. Lặp lại 3 lần
+        # 3. Thực hiện vuốt dồn dập
         for i in range(repeats):
-            if dx == 0 and dy == 1:
-                repeats = 5
-
-            # Tính toán điểm kết thúc cho mỗi lần vuốt
             ex = cx + (dx * distance)
             ey = cy + (dy * distance)
 
-            print(f"   - Lần {i+1}/{repeats}: Vuốt từ ({cx}, {cy}) đến ({ex}, {ey})")
-
-            # Thực hiện lệnh swipe
+            # Vuốt không chờ đợi
             self.swipe(cx, cy, ex, ey, duration=duration)
 
-            # Đợi một chút ngắn giữa các lần vuốt để game nhận lệnh mượt hơn
-            # Nếu vuốt quá dồn dập, game đôi khi chỉ nhận thành 1 cú vuốt dài
-            time.sleep(0.5)
+            # Chỉ nghỉ cực ngắn để ADB kịp gửi lệnh tiếp theo
+            time.sleep(0.1)
 
-        # 4. Sau khi xong 3 lần, đợi map dừng hẳn rồi mới làm việc khác
-        print("[V] Đã rời khỏi khu vực cũ.")
-        time.sleep(1.5)
+        print("[V] Đã đứng im tại khu vực mới.")

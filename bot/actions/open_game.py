@@ -6,22 +6,13 @@ def open_game(adb, logo_game_path, out_city_template):
     """Open game + tự động zoom out map khi ra ngoài thành phố"""
     print("🎮 Opening game...")
 
-    attempt = 0
     while True:
         try:
             # Tìm và mở game
             loc = adb.find(logo_game_path)
             if loc is not None:
                 adb.click(*loc)
-                time.sleep(10)  # Đợi load game
-                while attempt <= 10:
-                    rok_logo_2_loc = adb.find("assets/template/rok_logo_2.png")
-                    if rok_logo_2_loc is not None:
-                        time.sleep(2)
-                        adb.click(*rok_logo_2_loc)
-                        time.sleep(10)
-                        attempt += 1
-                        break
+                time.sleep(15)  # Đợi load game
 
                 print("✅ Open game successfully!")
 
