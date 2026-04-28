@@ -6,7 +6,7 @@ from bot.actions.gather.new_army import new_army
 from bot.actions.gather.return_army import return_army
 from bot.actions.close_popup import close_popup
 from services.util_service import check_safe_distance
-import time, subprocess
+import time
 
 
 class AutoBot:
@@ -53,10 +53,8 @@ class AutoBot:
                 else:
                     self.adb.swipe_escape_area()
 
-                # Gọi scan_gem để tìm tọa độ mỏ mới
                 gem_loc = self.scan_gem()
 
-                # Nếu scan_gem cũng không thấy, tiếp tục thoát xác sang vùng xa hơn
                 while gem_loc is None:
                     safe_distance = check_safe_distance(self.adb)
                     if safe_distance is not None:
@@ -67,10 +65,10 @@ class AutoBot:
 
                 self.adb.click(*gem_loc)
                 time.sleep(1.5)
+                close_popup(self.adb)
 
                 loc_big_gem = self.adb.find("assets/template/big_gem.png")
 
-            # --- Bước Click và Đi quân ---
             print(f"Click vào mỏ Gem tại: {loc_big_gem}")
             self.adb.click(*loc_big_gem)
             time.sleep(1)

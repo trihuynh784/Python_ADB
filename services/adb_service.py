@@ -13,16 +13,39 @@ class ADB:
         self.height = 720
         Path("assets").mkdir(exist_ok=True)
 
+    def run_adb(self, args, capture_output=False):
+        base_cmd = ["adb", "-s", self.deviceId]
+        full_cmd = base_cmd + args
+
+        try:
+            if capture_output:
+                # Trả về đối tượng CompletedProcess để lấy .stdout
+                return subprocess.run(full_cmd, capture_output=True, check=True)
+            else:
+                # Thực thi lệnh bình thường (như click, swipe)
+                subprocess.run(full_cmd, check=True)
+                return True
+        except subprocess.CalledProcessError as e:
+            print(f"Lỗi thực thi ADB: {e}")
+            return None
+        except Exception as e:
+            print(f"Lỗi không xác định: {e}")
+            return None
+
     def screen_capture(self, name):
+        """Lưu ảnh chụp màn hình trực tiếp vào file"""
         with open(f"assets/{name}.png", "wb") as f:
+            # Dùng thẳng subprocess ở đây hoặc tối ưu qua run_adb
             subprocess.run(
                 ["adb", "-s", self.deviceId, "exec-out", "screencap", "-p"], stdout=f
             )
 
     def screenshot(self):
+        """Chụp màn hình và chuyển về định dạng OpenCV (numpy array)"""
         process = self.run_adb(["exec-out", "screencap", "-p"], capture_output=True)
         if not process or not process.stdout:
             return None
+        # Chuyển đổi bytes từ adb sang mảng numpy để OpenCV đọc được
         return cv2.imdecode(np.frombuffer(process.stdout, np.uint8), cv2.IMREAD_COLOR)
 
     def click(self, x, y):
@@ -141,12 +164,13 @@ class ADB:
     def swipe_escape_area(self, dx=None, dy=None, distance=250):
         cx, cy = 640, 360
         repeats = 2
-        directions = [(1, 0), (-1, 0), (0, -1), (1, 1), (-1, -1)]
+        directions = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1)]
         if dx is None:
             dx, dy = random.choice(directions)
 
         for i in range(repeats):
-
+            if dx == 0 and dy == 1:
+                distance = 150
             offset = random.randint(-20, 20)
             x_end = cx - (dx * distance) + offset
             y_end = cy - (dy * distance) + offset

@@ -2,6 +2,7 @@ from bot.Auto_Bot import AutoBot
 from services.adb_service import ADB
 from services.util_service import check_safe_distance
 import time
+from bot.actions.close_popup import close_popup
 
 from config import DEVICE_NAME
 
@@ -15,7 +16,7 @@ def initBot():
     )
 
     # Run the game
-    autoBot.open_game()
+    # autoBot.open_game()
     autoBot.map_zoomout()
 
     while True:
@@ -38,6 +39,7 @@ def initBot():
                 loc = autoBot.scan_gem()
             adb.click(*loc)
             time.sleep(1.5)
+            close_popup(adb)
             autoBot.gather(status)
         elif status == "returning":
             adb.click(*return_army_loc)
@@ -52,6 +54,7 @@ def initBot():
                 loc = autoBot.scan_gem()
             adb.click(*loc)
             time.sleep(1.5)
+            close_popup(adb)
             autoBot.gather(status)
 
         time.sleep(5)
