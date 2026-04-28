@@ -1,26 +1,40 @@
 from bot.Auto_Bot import AutoBot
 from services.adb_service import ADB
-from config import DEVICE_NAME
+from services.util_service import check_safe_distance
 import time
 
+from config import DEVICE_NAME
 
-def main():
+
+def initBot():
     # Khoi tao ADB_Service, Bot
     adb = ADB(DEVICE_NAME)
-    autoBot = AutoBot(DEVICE_NAME, adb)
+    autoBot = AutoBot(
+        DEVICE_NAME,
+        adb,
+    )
 
     # Run the game
-    # autoBot.open_game()
-    # Map zoom out
+    autoBot.open_game()
     autoBot.map_zoomout()
 
     while True:
         return_army_loc, status = autoBot.check_status_army()
 
         if status == "not_full_army":
+            # ve gan nha
+            home_loc = adb.find("assets/template/home_location.png")
+            if home_loc is not None:
+                adb.click(*home_loc)
+                time.sleep(0.6)
+
             loc = autoBot.scan_gem()
             while loc is None:
-                adb.swipe_escape_area()
+                safe_distance = check_safe_distance(adb)
+                if safe_distance is not None:
+                    adb.swipe_escape_area(*safe_distance)
+                else:
+                    adb.swipe_escape_area()
                 loc = autoBot.scan_gem()
             adb.click(*loc)
             time.sleep(1.5)
@@ -30,7 +44,11 @@ def main():
             time.sleep(0.8)
             loc = autoBot.scan_gem()
             while loc is None:
-                adb.swipe_escape_area()
+                safe_distance = check_safe_distance(adb)
+                if safe_distance is not None:
+                    adb.swipe_escape_area(*safe_distance)
+                else:
+                    adb.swipe_escape_area()
                 loc = autoBot.scan_gem()
             adb.click(*loc)
             time.sleep(1.5)
@@ -40,4 +58,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    initBot()

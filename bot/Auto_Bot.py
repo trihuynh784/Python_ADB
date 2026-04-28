@@ -5,12 +5,8 @@ from bot.actions.scan_gem import scan_gem
 from bot.actions.gather.new_army import new_army
 from bot.actions.gather.return_army import return_army
 from bot.actions.close_popup import close_popup
-from bot.actions.mine_mark.mine_mark_handle import (
-    get_list_location_mine,
-    set_mine_into_list,
-    open_mine_marked,
-)
-import time
+from services.util_service import check_safe_distance
+import time, subprocess
 
 
 class AutoBot:
@@ -35,11 +31,9 @@ class AutoBot:
     def scan_gem(self):
         close_popup(self.adb)
         template_gem_list = [
-            "assets/template/gem_1.png",
-            "assets/template/gem_1_light_variant.png",
-            "assets/template/gem_1_ver_2.png",
-            # "assets/template/gem_2.png",
-            # "assets/template/gem_3.png",
+            "assets/template/gems/gem_1.png",
+            "assets/template/gems/gem_2.png",
+            # "assets/template/gems/gem_3.png",
         ]
         loc = scan_gem(self.adb, template_gem_list)
         if loc is None:
@@ -47,30 +41,39 @@ class AutoBot:
         return [loc[0], loc[1] - 10]
 
     def gather(self, gather_type="not_full_army"):
-        while True:  # Chạy cho đến khi nào đi quân thành công thì thôi
+        while True:
             loc_big_gem = self.adb.find("assets/template/big_gem.png")
 
-            if loc_big_gem is None:
+            while loc_big_gem is None:
                 print("Không thấy big_gem, đang di chuyển vùng khác để tìm...")
                 self.map_zoomout()
-                self.adb.swipe_escape_area()
+                safe_distance = check_safe_distance(self.adb)
+                if safe_distance is not None:
+                    self.adb.swipe_escape_area(*safe_distance)
+                else:
+                    self.adb.swipe_escape_area()
 
                 # Gọi scan_gem để tìm tọa độ mỏ mới
                 gem_loc = self.scan_gem()
 
                 # Nếu scan_gem cũng không thấy, tiếp tục thoát xác sang vùng xa hơn
                 while gem_loc is None:
-                    self.adb.swipe_escape_area()
+                    safe_distance = check_safe_distance(self.adb)
+                    if safe_distance is not None:
+                        self.adb.swipe_escape_area(*safe_distance)
+                    else:
+                        self.adb.swipe_escape_area()
                     gem_loc = self.scan_gem()
 
-                # Sau khi scan_gem đã đưa camera tới chỗ có mỏ,
-                # vòng lặp 'while True' sẽ quay lại bước tìm 'big_gem' ở đầu.
-                continue
+                self.adb.click(*gem_loc)
+                time.sleep(1.5)
+
+                loc_big_gem = self.adb.find("assets/template/big_gem.png")
 
             # --- Bước Click và Đi quân ---
             print(f"Click vào mỏ Gem tại: {loc_big_gem}")
             self.adb.click(*loc_big_gem)
-            time.sleep(1.2)
+            time.sleep(1)
 
             claim_loc = None
             for temp in [
@@ -87,14 +90,26 @@ class AutoBot:
                 time.sleep(1.0)
 
                 if gather_type == "returning":
-                    return_army(self.adb)
+                    is_full_payload = return_army(self.adb)
+                    if is_full_payload == "full_payload":
+                        self.adb.click(*loc_big_gem)
+                        time.sleep(0.6)
                 else:
                     new_army(self.adb)
 
                 self.map_zoomout()
-                self.adb.swipe_escape_area()
-                return  # <--- QUAN TRỌNG: Thoát hàm khi đã đi quân THÀNH CÔNG
+                safe_distance = check_safe_distance(self.adb)
+                if safe_distance is not None:
+                    self.adb.swipe_escape_area(*safe_distance)
+                else:
+                    self.adb.swipe_escape_area()
+                return
             else:
                 print("Mỏ lỗi hoặc đã bị chiếm, tìm mỏ khác...")
-                self.adb.swipe_escape_area()  # Vuốt đi chỗ khác để tránh kẹt ở mỏ này
-                continue  # Quay lại đầu vòng lặp để tìm mỏ khác
+                self.map_zoomout()
+
+                safe_distance = check_safe_distance(self.adb)
+                if safe_distance is not None:
+                    self.adb.swipe_escape_area(*safe_distance)
+                else:
+                    self.adb.swipe_escape_area()

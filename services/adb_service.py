@@ -1,9 +1,9 @@
 import subprocess
 import cv2
 import numpy as np
-from pathlib import Path
 import random
 import time
+from pathlib import Path
 
 
 class ADB:
@@ -19,17 +19,18 @@ class ADB:
                 ["adb", "-s", self.deviceId, "exec-out", "screencap", "-p"], stdout=f
             )
 
+    def screenshot(self):
+        process = self.run_adb(["exec-out", "screencap", "-p"], capture_output=True)
+        if not process or not process.stdout:
+            return None
+        return cv2.imdecode(np.frombuffer(process.stdout, np.uint8), cv2.IMREAD_COLOR)
+
     def click(self, x, y):
-        subprocess.run(
-            ["adb", "-s", self.deviceId, "shell", "input", "tap", str(x), str(y)]
-        )
+        self.run_adb(["shell", "input", "tap", str(x), str(y)])
 
     def draganddrop(self, x1, y1, x2, y2, dur=100):
-        subprocess.run(
+        self.run_adb(
             [
-                "adb",
-                "-s",
-                self.deviceId,
                 "shell",
                 "input",
                 "draganddrop",
@@ -42,11 +43,8 @@ class ADB:
         )
 
     def swipe(self, x1, y1, x2, y2, duration=1000):
-        subprocess.run(
+        self.run_adb(
             [
-                "adb",
-                "-s",
-                self.deviceId,
                 "shell",
                 "input",
                 "swipe",
@@ -59,143 +57,97 @@ class ADB:
         )
 
     def keyevent(self, key_name):
-        subprocess.run(
-            ["adb", "-s", self.deviceId, "shell", "input", "keyevent", key_name]
-        )
+        self.run_adb(["shell", "input", "keyevent", str(key_name)])
 
     def find(self, target_img_path, threshold=0.8, debug=False, mark_mine=False):
-        command = ["adb", "-s", self.deviceId, "exec-out", "screencap", "-p"]
-        process = subprocess.run(command, capture_output=True)
-
-        if not process.stdout:
-            print("!!! Lỗi: ADB không phản hồi")
+        screen_img_full = self.screenshot()
+        if screen_img_full is None:
             return None
 
-        # Fix: Use imdecode for bytes, not imread
-        screen_img = cv2.imdecode(
-            np.frombuffer(process.stdout, np.uint8), cv2.IMREAD_GRAYSCALE
-        )
+        screen_img = cv2.cvtColor(screen_img_full, cv2.COLOR_BGR2GRAY)
         target_img = cv2.imread(target_img_path, cv2.IMREAD_GRAYSCALE)
-
         if screen_img is None or target_img is None:
-            print(f"Error loading images: screen or {target_img_path}")
             return None
 
         result = cv2.matchTemplate(screen_img, target_img, cv2.TM_CCOEFF_NORMED)
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-
-        if (max_val >= threshold) & debug:
-            h, w = target_img.shape
-            top_left = max_loc
-            bottom_right = (top_left[0] + w, top_left[1] + h)
-
-            cv2.rectangle(screen_img, top_left, bottom_right, (0, 0, 255), 2)
-            cv2.putText(
-                screen_img,
-                f"Score: {round(max_val, 2)}",
-                (top_left[0], top_left[1] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 0, 255),
-                1,
-            )
-
-            cv2.imshow("Debug Bot View", screen_img)
-            cv2.waitKey(0)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val >= threshold:
             h, w = target_img.shape
             center_x = max_loc[0] + (w // 2)
             center_y = max_loc[1] + (h // 2)
             print(f"- Found {target_img_path} (Score: {round(max_val, 2)})")
-            if mark_mine:
-                return [max_loc[0] + 10, max_loc[1] + 10]
-            return [center_x, center_y]
+            return (
+                [max_loc[0] + 10, max_loc[1] + 10]
+                if mark_mine
+                else [center_x, center_y]
+            )
+        return None
 
+    def find_with_color(self, target_img_path, threshold=0.8, color_tolerance=30):
+        """Hàm tìm theo màu sắc - Đã thêm cơ chế ngắt"""
+        screen_img = self.screenshot()  # Đã có sẵn run_adb kiểm tra stop bên trong
+        target_img = cv2.imread(target_img_path, cv2.IMREAD_COLOR)
+
+        if screen_img is None or target_img is None:
+            return None
+
+        h, w, _ = target_img.shape
+        screen_gray = cv2.cvtColor(screen_img, cv2.COLOR_BGR2GRAY)
+        target_gray = cv2.cvtColor(target_img, cv2.COLOR_BGR2GRAY)
+
+        res = cv2.matchTemplate(screen_gray, target_gray, cv2.TM_CCOEFF_NORMED)
+        loc = np.where(res >= threshold)
+        target_avg_color = cv2.mean(target_img)[:3]
+
+        for pt in zip(*loc[::-1]):
+
+            sample_roi = screen_img[pt[1] : pt[1] + h, pt[0] : pt[0] + w]
+            sample_avg_color = cv2.mean(sample_roi)[:3]
+            color_diff = np.linalg.norm(
+                np.array(target_avg_color) - np.array(sample_avg_color)
+            )
+
+            if color_diff < color_tolerance:
+                return [int(pt[0] + (w // 2)), int(pt[1] + (h // 2))]
         return None
 
     def find_all(self, target_img_path, threshold=0.8, debug=False):
-        command = ["adb", "-s", self.deviceId, "exec-out", "screencap", "-p"]
-        process = subprocess.run(command, capture_output=True)
-
-        if not process.stdout:
-            print("!!! Lỗi: ADB không phản hồi")
+        screen_img_full = self.screenshot()
+        if screen_img_full is None:
             return []
 
-        # Decode ảnh từ bộ nhớ đệm
-        screen_img = cv2.imdecode(
-            np.frombuffer(process.stdout, np.uint8), cv2.IMREAD_GRAYSCALE
-        )
+        screen_img = cv2.cvtColor(screen_img_full, cv2.COLOR_BGR2GRAY)
         target_img = cv2.imread(target_img_path, cv2.IMREAD_GRAYSCALE)
-
         if screen_img is None or target_img is None:
-            print(f"Error loading images: screen or {target_img_path}")
             return []
 
         h, w = target_img.shape
         res = cv2.matchTemplate(screen_img, target_img, cv2.TM_CCOEFF_NORMED)
-
-        # Tìm tất cả các vị trí có độ khớp > threshold
         loc = np.where(res >= threshold)
 
         results = []
-        # loc trả về theo dạng (array_y, array_x)
         for pt in zip(*loc[::-1]):
             center_x = int(pt[0] + (w // 2))
             center_y = int(pt[1] + (h // 2))
-
-            # Để tránh việc lấy quá nhiều điểm trùng lặp sát nhau (nhiễu)
-            # Chúng ta có thể kiểm tra xem điểm này đã tồn tại trong list chưa
-            is_duplicate = False
-            for existing_x, existing_y in results:
-                if abs(center_x - existing_x) < (w // 2) and abs(
-                    center_y - existing_y
-                ) < (h // 2):
-                    is_duplicate = True
-                    break
-
+            is_duplicate = any(
+                abs(center_x - rx) < (w // 2) and abs(center_y - ry) < (h // 2)
+                for rx, ry in results
+            )
             if not is_duplicate:
                 results.append([center_x, center_y])
-                if debug:
-                    cv2.rectangle(
-                        screen_img, pt, (pt[0] + w, pt[1] + h), (0, 0, 255), 2
-                    )
-
-        if debug and len(results) > 0:
-            cv2.imshow("Debug Find All", screen_img)
-            cv2.waitKey(0)
-
-        # print(f"- Found {len(results)} matches for {target_img_path}")
         return results
 
-    def swipe_escape_area(self):
-        distance = 400  # Tăng khoảng cách một chút để bay xa hơn
-        duration = 100  # Cực nhanh
+    def swipe_escape_area(self, dx=None, dy=None, distance=250):
+        cx, cy = 640, 360
         repeats = 2
+        directions = [(1, 0), (-1, 0), (0, -1), (1, 1), (-1, -1)]
+        if dx is None:
+            dx, dy = random.choice(directions)
 
-        cx = self.width // 2
-        cy = self.height // 2
-
-        # 2. Chọn hướng ngẫu nhiên
-        possible_directions = [
-            (1, 0),  # Phải
-            (-1, 0),  # Trái
-            (0, 1),  # Lên
-            (0, -1),  # Xuống
-        ]
-        dx, dy = random.choice(possible_directions)
-
-        print(f"[*] Thoát xác nhanh: {repeats} lần về hướng {dx, dy}")
-
-        # 3. Thực hiện vuốt dồn dập
         for i in range(repeats):
-            ex = cx + (dx * distance)
-            ey = cy + (dy * distance)
 
-            # Vuốt không chờ đợi
-            self.swipe(cx, cy, ex, ey, duration=duration)
-
-            # Chỉ nghỉ cực ngắn để ADB kịp gửi lệnh tiếp theo
-            time.sleep(0.1)
-
-        print("[V] Đã đứng im tại khu vực mới.")
+            offset = random.randint(-20, 20)
+            x_end = cx - (dx * distance) + offset
+            y_end = cy - (dy * distance) + offset
+            self.draganddrop(cx, cy, int(x_end), int(y_end), dur=50)
